@@ -18,7 +18,7 @@ import { LabResultsView } from './components/LabResultsView';
 import { ClinicalLifecycleAssessmentView } from './components/ClinicalLifecycleAssessmentView';
 import { AppointmentsCalendarView } from './components/AppointmentsCalendarView';
 import { AdvancedClinicalCalculators } from './components/AdvancedClinicalCalculators';
-import { GoogleDriveSyncView } from './components/GoogleDriveSyncView';
+import { FileBackupSyncView } from './components/FileBackupSyncView';
 import { Patient, Gender, NutritionGoal, PathologyType, ClinicalAppointment, PatientActivity } from './types/nutrition';
 import { getInitialDemoPatients, getInitialDemoAppointments, getInitialDemoActivities } from './utils/mockPatients';
 import { initAuth, googleLogout } from './utils/googleAuth';
@@ -582,21 +582,11 @@ export default function App() {
         )}
 
         {currentTab === 'drive_sync' && (
-          <GoogleDriveSyncView
+          <FileBackupSyncView
             patients={patients}
             activePatient={activePatient}
             appointments={appointments}
             clinicianName={currentUser.name}
-            googleUser={googleUser}
-            driveAccessToken={driveAccessToken}
-            onGoogleConnected={(user, token) => {
-              setGoogleUser(user);
-              setDriveAccessToken(token);
-            }}
-            onGoogleDisconnected={() => {
-              setGoogleUser(null);
-              setDriveAccessToken(null);
-            }}
             onImportPatients={handleImportPatients}
             onSelectPatient={handleSelectPatient}
             onNavigateToTab={setCurrentTab}
