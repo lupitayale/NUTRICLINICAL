@@ -9,6 +9,7 @@ const CLIENT_ID =
 export const FIREBASE_PROJECT_ID = defaultFirebaseConfig.projectId;
 export const FIREBASE_AUTHORIZED_DOMAINS_URL = `https://console.firebase.google.com/project/${FIREBASE_PROJECT_ID}/authentication/settings`;
 export const OAUTH_CONSENT_URL = `https://console.cloud.google.com/apis/credentials/consent?project=${FIREBASE_PROJECT_ID}`;
+export const GOOGLE_CREDENTIALS_URL = `https://console.cloud.google.com/apis/credentials?project=${FIREBASE_PROJECT_ID}`;
 
 let cachedAccessToken: string | null = null;
 let currentUser: {
@@ -25,6 +26,13 @@ export function getCurrentHostname(): string {
     return window.location.hostname;
   }
   return '';
+}
+
+export function getCurrentOrigin(): string {
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    return window.location.origin;
+  }
+  return 'https://nutriclinical.onrender.com';
 }
 
 function loadGsiScript(): Promise<void> {
@@ -67,8 +75,6 @@ export const initAuth = (
 
 /**
  * Authenticates user with Google Identity Services (GIS) Token Client.
- * Bypasses Firebase Auth domain restrictions completely so custom domains
- * like nutriclinical.onrender.com work instantly without unauthorized-domain errors.
  */
 export const googleSignIn = async (): Promise<{
   user: any;
@@ -82,15 +88,18 @@ export const googleSignIn = async (): Promise<{
         scope: SCOPES.join(' '),
         callback: async (response: any) => {
           if (response.error) {
-            reject(
-              new Error(
-                `Error de autenticación Google (${response.error}): ${
-                  response.error_description || 'No se pudo autorizar'
-                }`
-              )
+            const errCode = response.error;
+            const errDesc = response.error_description || errCode;
+            const customErr: any = new Error(
+              errCode === 'origin_mismatch'
+                ? `Error 400: origin_mismatch - El origen "${getCurrentOrigin()}" no está registrado en los Orígenes de JavaScript autorizados de tu credencial OAuth en Google Cloud Console.`
+                : `Error de autenticación Google (${errCode}): ${errDesc}`
             );
+            customErr.code = errCode;
+            reject(customErr);
             return;
           }
+
           const accessToken = response.access_token;
           cachedAccessToken = accessToken;
 

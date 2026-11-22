@@ -584,7 +584,13 @@ export const GoogleDriveSyncView: React.FC<GoogleDriveSyncViewProps> = ({
 
       {!isConnected && authErrorCode && (
         <GoogleAuthDiagnosticCard
-          errorType={authErrorCode === 'auth/unauthorized-domain' ? 'unauthorized-domain' : 'access-denied'}
+          errorType={
+            authErrorCode === 'origin_mismatch'
+              ? 'origin-mismatch'
+              : authErrorCode === 'auth/unauthorized-domain'
+              ? 'unauthorized-domain'
+              : 'access-denied'
+          }
           onRetry={handleConnectGoogle}
         />
       )}
