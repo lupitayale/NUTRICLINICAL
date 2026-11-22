@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { User } from 'firebase/auth';
 import {
   Cloud,
   CloudUpload,
@@ -50,9 +49,9 @@ interface GoogleDriveSyncViewProps {
   activePatient: Patient | null;
   appointments: ClinicalAppointment[];
   clinicianName: string;
-  googleUser: User | null;
+  googleUser: any | null;
   driveAccessToken: string | null;
-  onGoogleConnected: (user: User, token: string) => void;
+  onGoogleConnected: (user: any, token: string) => void;
   onGoogleDisconnected: () => void;
   onImportPatients: (
     importedPatients: Patient[],

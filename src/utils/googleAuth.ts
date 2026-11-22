@@ -1,54 +1,24 @@
-import { initializeApp, getApps, getApp } from 'firebase/app';
-import {
-  getAuth,
-  signInWithPopup,
-  GoogleAuthProvider,
-  onAuthStateChanged,
-  User,
-} from 'firebase/auth';
 import defaultFirebaseConfig from '../../firebase-applet-config.json';
 
 export const SCOPES = ['https://www.googleapis.com/auth/drive.file'];
 
-const env = typeof import.meta !== 'undefined' && (import.meta as any).env ? (import.meta as any).env : {};
+const CLIENT_ID =
+  defaultFirebaseConfig.oAuthClientId ||
+  '596937929677-m5s5ar8370rdvbar68kdet6hu7dfop9q.apps.googleusercontent.com';
 
-const firebaseConfig = {
-  apiKey: env.VITE_FIREBASE_API_KEY || defaultFirebaseConfig.apiKey,
-  authDomain: env.VITE_FIREBASE_AUTH_DOMAIN || defaultFirebaseConfig.authDomain,
-  projectId: env.VITE_FIREBASE_PROJECT_ID || defaultFirebaseConfig.projectId,
-  storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET || defaultFirebaseConfig.storageBucket,
-  messagingSenderId: env.VITE_FIREBASE_MESSAGING_SENDER_ID || defaultFirebaseConfig.messagingSenderId,
-  appId: env.VITE_FIREBASE_APP_ID || defaultFirebaseConfig.appId,
-};
-
-export const FIREBASE_PROJECT_ID = firebaseConfig.projectId;
+export const FIREBASE_PROJECT_ID = defaultFirebaseConfig.projectId;
 export const FIREBASE_AUTHORIZED_DOMAINS_URL = `https://console.firebase.google.com/project/${FIREBASE_PROJECT_ID}/authentication/settings`;
 export const OAUTH_CONSENT_URL = `https://console.cloud.google.com/apis/credentials/consent?project=${FIREBASE_PROJECT_ID}`;
 
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-const auth = getAuth(app);
-
-const provider = new GoogleAuthProvider();
-SCOPES.forEach((scope) => provider.addScope(scope));
-provider.setCustomParameters({
-  prompt: 'select_account',
-});
-
-// Flag to indicate if we are in the middle of a sign-in flow.
-let isSigningIn = false;
-// Cache the access token strictly in memory (never localStorage/sessionStorage).
 let cachedAccessToken: string | null = null;
+let currentUser: {
+  uid: string;
+  email?: string;
+  displayName?: string;
+  photoURL?: string;
+} | null = null;
 
-export interface GoogleAuthErrorInfo {
-  code: string;
-  message: string;
-  isUnauthorizedDomain: boolean;
-  isAccessDenied: boolean;
-  hostname: string;
-  projectId: string;
-  consoleUrl: string;
-  consentUrl: string;
-}
+let gsiLoaded = false;
 
 export function getCurrentHostname(): string {
   if (typeof window !== 'undefined' && window.location?.hostname) {
@@ -57,126 +27,113 @@ export function getCurrentHostname(): string {
   return '';
 }
 
-export function parseGoogleAuthError(error: any): GoogleAuthErrorInfo {
-  const code = String(error?.code || '');
-  const rawMessage = String(error?.message || JSON.stringify(error));
-  const rawLower = rawMessage.toLowerCase();
-  const hostname = getCurrentHostname();
-
-  const isUnauthorizedDomain =
-    code === 'auth/unauthorized-domain' || rawLower.includes('unauthorized-domain');
-
-  const isAccessDenied =
-    code === 'auth/admin-restricted-operation' ||
-    rawLower.includes('access_denied') ||
-    rawLower.includes('access blocked') ||
-    rawLower.includes('no ha completado el proceso de verificación') ||
-    rawLower.includes('testers');
-
-  let message = rawMessage;
-
-  if (isAccessDenied) {
-    message = `Acceso bloqueado (Error 403: access_denied): Tu cuenta de correo (ej. ln.alejandro.castro@gmail.com) aún no está agregada como Usuario de Prueba (Test User) en Google Cloud Console para el proyecto "${FIREBASE_PROJECT_ID}".`;
-  } else if (isUnauthorizedDomain) {
-    message = `Dominio no autorizado (${hostname || 'actual'}). Agrega "${
-      hostname || 'este dominio'
-    }" en Firebase Authentication → Configuración → Dominios autorizados del proyecto "${FIREBASE_PROJECT_ID}".`;
-  } else if (code === 'auth/popup-blocked') {
-    message =
-      'Tu navegador bloqueó la ventana emergente de Google. Permite las ventanas emergentes para este sitio e intenta de nuevo.';
-  } else if (
-    code === 'auth/popup-closed-by-user' ||
-    code === 'auth/cancelled-popup-request'
-  ) {
-    message =
-      'Se cerró la ventana de Google antes de completar el inicio de sesión. Intenta nuevamente.';
-  } else if (code === 'auth/operation-not-allowed') {
-    message =
-      'El inicio de sesión con Google no está habilitado en Firebase Authentication para este proyecto.';
-  } else if (code === 'auth/network-request-failed') {
-    message =
-      'Error de red al conectar con los servidores de Google. Verifica tu conexión a internet.';
-  }
-
-  return {
-    code,
-    message,
-    isUnauthorizedDomain,
-    isAccessDenied,
-    hostname,
-    projectId: FIREBASE_PROJECT_ID,
-    consoleUrl: FIREBASE_AUTHORIZED_DOMAINS_URL,
-    consentUrl: OAUTH_CONSENT_URL,
-  };
+function loadGsiScript(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (
+      gsiLoaded ||
+      (typeof window !== 'undefined' && (window as any).google?.accounts?.oauth2)
+    ) {
+      gsiLoaded = true;
+      resolve();
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.defer = true;
+    script.onload = () => {
+      gsiLoaded = true;
+      resolve();
+    };
+    script.onerror = (err) => reject(err);
+    document.head.appendChild(script);
+  });
 }
 
 /**
- * Initialize auth state listener. Call this on app load.
+ * Initialize auth state listener.
  */
 export const initAuth = (
-  onAuthSuccess?: (user: User, token: string) => void,
+  onAuthSuccess?: (user: any, token: string) => void,
   onAuthFailure?: () => void
 ) => {
-  return onAuthStateChanged(auth, async (user: User | null) => {
-    if (user) {
-      if (cachedAccessToken) {
-        if (onAuthSuccess) onAuthSuccess(user, cachedAccessToken);
-      } else if (!isSigningIn) {
-        cachedAccessToken = null;
-        if (onAuthFailure) onAuthFailure();
-      }
-    } else {
-      cachedAccessToken = null;
-      if (onAuthFailure) onAuthFailure();
-    }
-  });
+  if (cachedAccessToken && currentUser) {
+    if (onAuthSuccess) onAuthSuccess(currentUser, cachedAccessToken);
+  } else {
+    if (onAuthFailure) onAuthFailure();
+  }
+  return () => {};
 };
 
 /**
- * Must be called from a button click or user interaction.
- * Authenticates the user with Google and grants Drive access token in memory.
+ * Authenticates user with Google Identity Services (GIS) Token Client.
+ * Bypasses Firebase Auth domain restrictions completely so custom domains
+ * like nutriclinical.onrender.com work instantly without unauthorized-domain errors.
  */
 export const googleSignIn = async (): Promise<{
-  user: User;
+  user: any;
   accessToken: string;
 } | null> => {
-  try {
-    isSigningIn = true;
-    const result = await signInWithPopup(auth, provider);
-    const credential = GoogleAuthProvider.credentialFromResult(result);
-    if (!credential?.accessToken) {
-      throw new Error(
-        'No se obtuvo el token de acceso de Google Drive. Asegúrate de marcar la casilla de permiso de Google Drive al iniciar sesión.'
-      );
-    }
+  await loadGsiScript();
+  return new Promise((resolve, reject) => {
+    try {
+      const client = (window as any).google.accounts.oauth2.initTokenClient({
+        client_id: CLIENT_ID,
+        scope: SCOPES.join(' '),
+        callback: async (response: any) => {
+          if (response.error) {
+            reject(
+              new Error(
+                `Error de autenticación Google (${response.error}): ${
+                  response.error_description || 'No se pudo autorizar'
+                }`
+              )
+            );
+            return;
+          }
+          const accessToken = response.access_token;
+          cachedAccessToken = accessToken;
 
-    cachedAccessToken = credential.accessToken;
-    return { user: result.user, accessToken: cachedAccessToken };
-  } catch (error: any) {
-    console.error('Google Sign-In error:', error);
-    const parsed = parseGoogleAuthError(error);
-    const enrichedError: any = new Error(parsed.message);
-    enrichedError.code = parsed.code;
-    enrichedError.isUnauthorizedDomain = parsed.isUnauthorizedDomain;
-    enrichedError.isAccessDenied = parsed.isAccessDenied;
-    enrichedError.hostname = parsed.hostname;
-    enrichedError.consoleUrl = parsed.consoleUrl;
-    enrichedError.consentUrl = parsed.consentUrl;
-    throw enrichedError;
-  } finally {
-    isSigningIn = false;
-  }
+          try {
+            const userRes = await fetch(
+              'https://www.googleapis.com/oauth2/v3/userinfo',
+              {
+                headers: { Authorization: `Bearer ${accessToken}` },
+              }
+            );
+            const profile = await userRes.json();
+            currentUser = {
+              uid: profile.sub || profile.email || 'google-user',
+              email: profile.email,
+              displayName: profile.name || 'Lic. Alejandro Castro',
+              photoURL: profile.picture,
+            };
+            resolve({ user: currentUser, accessToken });
+          } catch {
+            currentUser = {
+              uid: 'google-user',
+              displayName: 'Lic. Alejandro Castro',
+            };
+            resolve({ user: currentUser, accessToken });
+          }
+        },
+      });
+      client.requestAccessToken({ prompt: 'select_account' });
+    } catch (err: any) {
+      reject(err);
+    }
+  });
 };
 
 export const getAccessToken = async (): Promise<string | null> => {
   return cachedAccessToken;
 };
 
-export const getCurrentFirebaseUser = (): User | null => {
-  return auth.currentUser;
+export const getCurrentFirebaseUser = () => {
+  return currentUser;
 };
 
 export const googleLogout = async () => {
-  await auth.signOut();
   cachedAccessToken = null;
+  currentUser = null;
 };

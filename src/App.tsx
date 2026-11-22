@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { User as FirebaseUser } from 'firebase/auth';
 import { Header } from './components/Header';
 import { PatientList } from './components/PatientList';
 import { AnthropometryView } from './components/AnthropometryView';
@@ -121,7 +120,7 @@ export default function App() {
     }
   };
 
-  const [googleUser, setGoogleUser] = useState<FirebaseUser | null>(null);
+  const [googleUser, setGoogleUser] = useState<any | null>(null);
   const [driveAccessToken, setDriveAccessToken] = useState<string | null>(null);
   const [driveBackupNotice, setDriveBackupNotice] = useState<{ count: number } | null>(null);
 
@@ -140,7 +139,7 @@ export default function App() {
 
   const handleLoginSuccess = (
     user: AuthUser,
-    googleAuth?: { user: FirebaseUser; accessToken: string }
+    googleAuth?: { user: any; accessToken: string }
   ) => {
     setCurrentUser(user);
     try {
