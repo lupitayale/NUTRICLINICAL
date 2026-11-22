@@ -1,0 +1,8 @@
+{
+  "name": "NutriClinical Pro - Valoración y Menús Clínicos",
+  "description": "Software integral para nutriólogos: valoración nutricional antropométrica, ajuste metabólico según patologías (Diabetes, HTA, ERC, etc.), seguimiento de pacientes y generación automática de menús sin batallar.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
