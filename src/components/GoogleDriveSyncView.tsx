@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { Patient, ClinicalAppointment } from '../types/nutrition';
 import { GoogleSignInButton } from './GoogleSignInButton';
+import { GoogleAuthDiagnosticCard } from './GoogleAuthDiagnosticCard';
 import {
   googleSignIn,
   googleLogout,
@@ -107,6 +108,7 @@ export const GoogleDriveSyncView: React.FC<GoogleDriveSyncViewProps> = ({
     type: 'success' | 'error' | 'info';
     message: string;
   } | null>(null);
+  const [authErrorCode, setAuthErrorCode] = useState<string | null>(null);
 
   const [pendingConfirm, setPendingConfirm] = useState<PendingDriveConfirm | null>(null);
   const [extractionPreview, setExtractionPreview] = useState<ExtractionPreviewState | null>(null);
@@ -117,14 +119,21 @@ export const GoogleDriveSyncView: React.FC<GoogleDriveSyncViewProps> = ({
   useEffect(() => {
     if (activePatient?.id) {
       setSelectedPatientToUploadId(activePatient.id);
+    } else if (
+      patients.length > 0 &&
+      !patients.some((p) => p.id === selectedPatientToUploadId)
+    ) {
+      setSelectedPatientToUploadId(patients[0].id);
     }
-  }, [activePatient?.id]);
+  }, [activePatient?.id, patients, selectedPatientToUploadId]);
 
   const showStatus = (type: 'success' | 'error' | 'info', message: string) => {
     setStatusBanner({ type, message });
-    setTimeout(() => {
-      setStatusBanner((prev) => (prev?.message === message ? null : prev));
-    }, 6000);
+    if (type !== 'error') {
+      setTimeout(() => {
+        setStatusBanner((prev) => (prev?.message === message ? null : prev));
+      }, 6000);
+    }
   };
 
   const fetchDriveFiles = useCallback(async (tokenOverride?: string) => {
@@ -162,9 +171,12 @@ export const GoogleDriveSyncView: React.FC<GoogleDriveSyncViewProps> = ({
 
   const handleConnectGoogle = async () => {
     setIsLoggingIn(true);
+    setAuthErrorCode(null);
+    setStatusBanner(null);
     try {
       const res = await googleSignIn();
       if (res) {
+        setAuthErrorCode(null);
         onGoogleConnected(res.user, res.accessToken);
         showStatus(
           'success',
@@ -173,6 +185,9 @@ export const GoogleDriveSyncView: React.FC<GoogleDriveSyncViewProps> = ({
         await fetchDriveFiles(res.accessToken);
       }
     } catch (err: any) {
+      if (err?.code) {
+        setAuthErrorCode(err.code);
+      }
       showStatus(
         'error',
         err?.message || 'No se pudo completar el inicio de sesión con Google.'
@@ -566,6 +581,13 @@ export const GoogleDriveSyncView: React.FC<GoogleDriveSyncViewProps> = ({
             <X className="w-4 h-4" />
           </button>
         </div>
+      )}
+
+      {!isConnected && authErrorCode && (
+        <GoogleAuthDiagnosticCard
+          errorType={authErrorCode === 'auth/unauthorized-domain' ? 'unauthorized-domain' : 'access-denied'}
+          onRetry={handleConnectGoogle}
+        />
       )}
 
       {!isConnected ? (

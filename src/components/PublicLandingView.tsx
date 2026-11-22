@@ -20,9 +20,6 @@ import {
   ChevronDown,
 } from 'lucide-react';
 import { authenticateNutriologist } from '../utils/authNutriologists';
-import { GoogleSignInButton } from './GoogleSignInButton';
-import { googleSignIn } from '../utils/googleAuth';
-import { User as FirebaseUser } from 'firebase/auth';
 
 interface PublicLandingViewProps {
   onLoginSuccess: (user: {
@@ -31,9 +28,8 @@ interface PublicLandingViewProps {
     role: string;
     professionalLicense?: string;
     email?: string;
-    photoURL?: string;
-    authProvider?: 'local' | 'google';
-  }, googleAuth?: { user: FirebaseUser; accessToken: string }) => void;
+    authProvider?: 'local';
+  }) => void;
 }
 
 export const PublicLandingView: React.FC<PublicLandingViewProps> = ({ onLoginSuccess }) => {
@@ -76,34 +72,7 @@ export const PublicLandingView: React.FC<PublicLandingViewProps> = ({ onLoginSuc
     }, 250);
   };
 
-  const handleGoogleLogin = async () => {
-    setErrorMsg('');
-    setIsLoading(true);
-    try {
-      const res = await googleSignIn();
-      if (res) {
-        const gUser = res.user;
-        const emailKey = (gUser.email || gUser.uid).replace(/[^a-zA-Z0-9._-]/g, '_');
-        onLoginSuccess(
-          {
-            username: emailKey,
-            name: gUser.displayName || 'Lic. Alejandro Castro',
-            role: 'Nutriólogo Clínico · Google Drive',
-            professionalLicense: 'Céd. Prof. 11995820',
-            email: gUser.email || undefined,
-            photoURL: gUser.photoURL || undefined,
-            authProvider: 'google',
-          },
-          res
-        );
-      }
-    } catch (err: any) {
-      setErrorMsg(
-        err?.message || 'No se pudo iniciar sesión con Google. Verifica el permiso emergente.'
-      );
-      setIsLoading(false);
-    }
-  };
+
 
   const handleAppointmentSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -452,6 +421,8 @@ export const PublicLandingView: React.FC<PublicLandingViewProps> = ({ onLoginSuc
               </div>
             )}
 
+
+
             <form onSubmit={handleLoginSubmit} className="space-y-4 text-xs">
               <div>
                 <label className="font-bold text-slate-300 uppercase block mb-1.5">Usuario Profesional</label>
@@ -510,26 +481,6 @@ export const PublicLandingView: React.FC<PublicLandingViewProps> = ({ onLoginSuc
                 {!isLoading && <ArrowRight className="w-4 h-4" />}
               </button>
             </form>
-
-            <div className="relative flex items-center py-1">
-              <div className="flex-grow border-t border-slate-700"></div>
-              <span className="shrink mx-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-                o accede con tu cuenta Google
-              </span>
-              <div className="flex-grow border-t border-slate-700"></div>
-            </div>
-
-            <div className="space-y-2">
-              <GoogleSignInButton
-                onClick={handleGoogleLogin}
-                disabled={isLoading}
-                label="Iniciar sesión con Google (Google Drive)"
-                className="w-full"
-              />
-              <p className="text-[11px] text-center text-slate-400">
-                Conecta Google Drive para guardar y extraer tus pacientes desde cualquier computadora.
-              </p>
-            </div>
           </div>
         </div>
       )}

@@ -37,20 +37,68 @@ export interface IndividualPatientPayload {
 }
 
 function sanitizeFileName(name: string): string {
-  return name
+  const cleaned = name
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-zA-Z0-9_-]+/g, '_')
     .replace(/^_+|_+$/g, '');
+  return cleaned || 'Paciente';
+}
+
+/**
+ * Truncates a string so its UTF-8 byte length never exceeds maxBytes.
+ * Google Drive appProperties require key + value <= 124 bytes in UTF-8.
+ */
+function truncateUtf8(str: string, maxBytes: number): string {
+  const encoder = new TextEncoder();
+  let result = '';
+  let usedBytes = 0;
+  for (const ch of str) {
+    const len = encoder.encode(ch).length;
+    if (usedBytes + len > maxBytes) break;
+    result += ch;
+    usedBytes += len;
+  }
+  return result;
 }
 
 async function handleDriveResponse(res: Response) {
   if (res.status === 401) {
     throw new Error('TOKEN_EXPIRED');
   }
+  if (res.status === 404) {
+    throw new Error('DRIVE_FILE_NOT_FOUND');
+  }
   if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Error de Google Drive (${res.status}): ${text}`);
+    const rawText = await res.text();
+    let apiMessage = rawText;
+    let reason = '';
+    try {
+      const parsed = JSON.parse(rawText);
+      apiMessage = parsed?.error?.message || rawText;
+      reason = parsed?.error?.errors?.[0]?.reason || '';
+    } catch {
+      // keep rawText
+    }
+
+    if (
+      res.status === 403 &&
+      (reason === 'insufficientPermissions' ||
+        apiMessage.includes('ACCESS_TOKEN_SCOPE_INSUFFICIENT') ||
+        apiMessage.toLowerCase().includes('insufficient'))
+    ) {
+      throw new Error(
+        'Faltan permisos de Google Drive en tu sesión. Cierra la conexión de Google y vuelve a iniciar sesión marcando la casilla de acceso a Google Drive.'
+      );
+    }
+
+    if (res.status === 403 && reason === 'accessNotConfigured') {
+      throw new Error(
+        'La API de Google Drive no está habilitada en el proyecto de Google Cloud.'
+      );
+    }
+
+    throw new Error(`Error de Google Drive (${res.status}): ${apiMessage}`);
   }
   if (res.status === 204) return null;
   return res.json();
@@ -148,6 +196,7 @@ async function uploadMultipartJson(
     '',
     JSON.stringify(jsonContent, null, 2),
     `--${boundary}--`,
+    '',
   ];
   const multipartBody = bodyParts.join('\r\n');
 
@@ -185,22 +234,33 @@ export async function savePatientRecordToDrive(
     patient,
   };
 
-  const metadata: Record<string, any> = {
+  const baseMetadata: Record<string, any> = {
     name: fileName,
     mimeType: 'application/json',
     description: `Expediente clínico nutricional de ${patient.fullName}`,
     appProperties: {
       nutriclinicalType: 'patient_record',
-      patientId: patient.id,
-      patientName: patient.fullName.slice(0, 100),
+      patientId: truncateUtf8(String(patient.id), 90),
+      patientName: truncateUtf8(patient.fullName || 'Paciente', 90),
     },
   };
 
-  if (!existingFileId) {
-    metadata.parents = [folderId];
+  if (existingFileId) {
+    try {
+      return await uploadMultipartJson(accessToken, baseMetadata, payload, existingFileId);
+    } catch (err: any) {
+      if (err?.message !== 'DRIVE_FILE_NOT_FOUND') {
+        throw err;
+      }
+      // File was manually deleted in Google Drive; create a fresh copy inside the folder
+    }
   }
 
-  return uploadMultipartJson(accessToken, metadata, payload, existingFileId);
+  return uploadMultipartJson(
+    accessToken,
+    { ...baseMetadata, parents: [folderId] },
+    payload
+  );
 }
 
 /**
@@ -222,7 +282,7 @@ export async function saveFullClinicBackupToDrive(
     appointments,
   };
 
-  const metadata: Record<string, any> = {
+  const baseMetadata: Record<string, any> = {
     name: FULL_BACKUP_FILENAME,
     mimeType: 'application/json',
     description: `Base completa de expedientes NutriClinical Pro (${patients.length} pacientes)`,
@@ -232,11 +292,22 @@ export async function saveFullClinicBackupToDrive(
     },
   };
 
-  if (!existingFileId) {
-    metadata.parents = [folderId];
+  if (existingFileId) {
+    try {
+      return await uploadMultipartJson(accessToken, baseMetadata, payload, existingFileId);
+    } catch (err: any) {
+      if (err?.message !== 'DRIVE_FILE_NOT_FOUND') {
+        throw err;
+      }
+      // Backup file was manually removed in Drive; create a fresh copy inside the folder
+    }
   }
 
-  return uploadMultipartJson(accessToken, metadata, payload, existingFileId);
+  return uploadMultipartJson(
+    accessToken,
+    { ...baseMetadata, parents: [folderId] },
+    payload
+  );
 }
 
 /**

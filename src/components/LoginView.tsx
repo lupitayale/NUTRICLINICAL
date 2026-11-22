@@ -1,23 +1,16 @@
 import React, { useState } from 'react';
 import { HeartPulse, Lock, User, Eye, EyeOff, ShieldCheck, ArrowRight, AlertCircle } from 'lucide-react';
 import { authenticateNutriologist } from '../utils/authNutriologists';
-import { GoogleSignInButton } from './GoogleSignInButton';
-import { googleSignIn } from '../utils/googleAuth';
-import { User as FirebaseUser } from 'firebase/auth';
 
 interface LoginViewProps {
-  onLoginSuccess: (
-    user: {
-      username: string;
-      name: string;
-      role: string;
-      professionalLicense?: string;
-      email?: string;
-      photoURL?: string;
-      authProvider?: 'local' | 'google';
-    },
-    googleAuth?: { user: FirebaseUser; accessToken: string }
-  ) => void;
+  onLoginSuccess: (user: {
+    username: string;
+    name: string;
+    role: string;
+    professionalLicense?: string;
+    email?: string;
+    authProvider?: 'local';
+  }) => void;
 }
 
 export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
@@ -50,34 +43,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
     }, 250);
   };
 
-  const handleGoogleLogin = async () => {
-    setErrorMsg('');
-    setIsLoading(true);
-    try {
-      const res = await googleSignIn();
-      if (res) {
-        const gUser = res.user;
-        const emailKey = (gUser.email || gUser.uid).replace(/[^a-zA-Z0-9._-]/g, '_');
-        onLoginSuccess(
-          {
-            username: emailKey,
-            name: gUser.displayName || 'Lic. Alejandro Castro',
-            role: 'Nutriólogo Clínico · Google Drive',
-            professionalLicense: 'Céd. Prof. 11995820',
-            email: gUser.email || undefined,
-            photoURL: gUser.photoURL || undefined,
-            authProvider: 'google',
-          },
-          res
-        );
-      }
-    } catch (err: any) {
-      setErrorMsg(
-        err?.message || 'No se pudo iniciar sesión con Google. Verifica el permiso emergente.'
-      );
-      setIsLoading(false);
-    }
-  };
+
 
   const handleFillDemo = () => {
     setUsername('alejandro');
@@ -116,6 +82,8 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
               <span>{errorMsg}</span>
             </div>
           )}
+
+
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
@@ -179,21 +147,6 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
               {!isLoading && <ArrowRight className="w-4 h-4" />}
             </button>
           </form>
-
-          <div className="relative flex items-center my-4">
-            <div className="flex-grow border-t border-slate-200"></div>
-            <span className="shrink mx-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-              o accede con Google
-            </span>
-            <div className="flex-grow border-t border-slate-200"></div>
-          </div>
-
-          <GoogleSignInButton
-            onClick={handleGoogleLogin}
-            disabled={isLoading}
-            label="Iniciar sesión con Google (Drive)"
-            className="w-full"
-          />
 
           {/* Quick Helper button */}
           <div className="mt-5 pt-4 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
